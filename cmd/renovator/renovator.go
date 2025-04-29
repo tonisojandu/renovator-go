@@ -107,6 +107,18 @@ func main() {
 				continue
 			}
 
+			// Get repository details to check if it's archived
+			repo, _, err := client.Repositories.Get(ctx, org, repoName)
+			if err != nil {
+				log.Printf("Error fetching repository details: %v", err)
+				continue
+			}
+
+			if repo.GetArchived() {
+				fmt.Printf("PR %s is in an archived repository, skipping\n", *pr.Title)
+				continue
+			}
+
 			if prDetails.GetMerged() {
 				fmt.Printf("PR %s is already merged\n", *pr.Title)
 				continue
