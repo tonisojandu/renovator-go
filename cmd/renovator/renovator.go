@@ -52,7 +52,7 @@ func main() {
 	client := github.NewClient(tc)
 
 	// Search for PRs
-	query := fmt.Sprintf("org:%s author:%s is:open is:pr review-requested:%s", org, author, user)
+	query := fmt.Sprintf("org:%s author:%s is:open is:pr review-requested:%s archived:false", org, author, user)
 	searchResult, _, err := client.Search.Issues(ctx, query, nil)
 	if err != nil {
 		log.Fatalf("Error searching PRs: %v", err)
@@ -104,18 +104,6 @@ func main() {
 			}
 			if err != nil {
 				log.Printf("Error fetching PR details: %v", err)
-				continue
-			}
-
-			// Get repository details to check if it's archived
-			repo, _, err := client.Repositories.Get(ctx, org, repoName)
-			if err != nil {
-				log.Printf("Error fetching repository details: %v", err)
-				continue
-			}
-
-			if repo.GetArchived() {
-				fmt.Printf("PR %s is in an archived repository, skipping\n", *pr.Title)
 				continue
 			}
 
