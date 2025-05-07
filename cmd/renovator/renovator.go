@@ -51,36 +51,37 @@ func main() {
 
 	client := github.NewClient(tc)
 
-	// Search for PRs
-	query := fmt.Sprintf("org:%s author:%s is:open is:pr review-requested:%s archived:false", org, author, user)
-	searchResult, _, err := client.Search.Issues(ctx, query, nil)
-	if err != nil {
-		log.Fatalf("Error searching PRs: %v", err)
-	}
-
-	fmt.Printf("Found %d renovate PRs for user %s\n", len(searchResult.Issues), user)
-
-	// Filter PRs by dependency if provided
-	var matchingPRs []*github.Issue
-	if dependency != "" {
-		for _, pr := range searchResult.Issues {
-			if pr.Title != nil && *pr.Title == dependency {
-				if pr.Repository != nil && pr.Repository.Name != nil && *pr.Repository.Name != "" {
-					matchingPRs = append(matchingPRs, pr)
-					fmt.Printf("Repository details: %+v\n", pr.Repository)
-				} else {
-					log.Printf("Repository name is missing for PR: %s", *pr.Title)
-				}
-			}
-		}
-		fmt.Printf("Found %d renovate PRs for dependency %s\n", len(matchingPRs), dependency)
-	} else {
-		matchingPRs = searchResult.Issues
-		fmt.Printf("Found %d renovate PRs\n", len(matchingPRs))
-	}
-
 	// Retry logic
 	for {
+
+		// Search for PRs
+		query := fmt.Sprintf("org:%s author:%s is:open is:pr review-requested:%s archived:false", org, author, user)
+		searchResult, _, err := client.Search.Issues(ctx, query, nil)
+		if err != nil {
+			log.Fatalf("Error searching PRs: %v", err)
+		}
+
+		fmt.Printf("Found %d renovate PRs for user %s\n", len(searchResult.Issues), user)
+
+		// Filter PRs by dependency if provided
+		var matchingPRs []*github.Issue
+		if dependency != "" {
+			for _, pr := range searchResult.Issues {
+				if pr.Title != nil && *pr.Title == dependency {
+					if pr.Repository != nil && pr.Repository.Name != nil && *pr.Repository.Name != "" {
+						matchingPRs = append(matchingPRs, pr)
+						fmt.Printf("Repository details: %+v\n", pr.Repository)
+					} else {
+						log.Printf("Repository name is missing for PR: %s", *pr.Title)
+					}
+				}
+			}
+			fmt.Printf("Found %d renovate PRs for dependency %s\n", len(matchingPRs), dependency)
+		} else {
+			matchingPRs = searchResult.Issues
+			fmt.Printf("Found %d renovate PRs\n", len(matchingPRs))
+		}
+
 		// Process each PR
 		for _, pr := range matchingPRs {
 			fmt.Printf("Processing PR: %s\n", *pr.Title)
