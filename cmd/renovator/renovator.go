@@ -4,12 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/google/go-github/v50/github"
-	"golang.org/x/oauth2"
 	"log"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/google/go-github/v50/github"
+	"golang.org/x/oauth2"
 )
 
 func main() {
@@ -84,6 +85,7 @@ func main() {
 
 		// Process each PR
 		for _, pr := range matchingPRs {
+			fmt.Println()
 			fmt.Printf("Processing PR: %s\n", *pr.Title)
 			repoUrl := pr.GetHTMLURL()
 			fmt.Printf("Repo URL: %s\n", repoUrl)
