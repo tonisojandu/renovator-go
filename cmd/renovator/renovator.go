@@ -14,13 +14,14 @@ import (
 
 func main() {
 	ctx := context.Background()
-	var token, tokenVariable, org, user, author, dependency, defaultComment string
+	var token, tokenVariable, org, user, repo, author, dependency, defaultComment string
 	var yes, debug, retryUntilAllMerged bool
 
 	flag.StringVar(&token, "token", "", "GitHub token to use")
 	flag.StringVar(&tokenVariable, "token-variable", "", "Name of an environment variable to read GitHub token from")
 	flag.StringVar(&org, "o", "", "GitHub organization to renovate")
 	flag.StringVar(&user, "u", "", "GitHub user who we are renovating for")
+	flag.StringVar(&repo, "r", "", "GitHub repo name to filter by (combined with -o). If set, user filter is ignored")
 	flag.StringVar(&author, "a", "app/renovate", "The creator of renovate request")
 	flag.StringVar(&dependency, "d", "", "The dependency to renovate")
 	flag.StringVar(&defaultComment, "m", "LGTM", "The default comment for PR approvals")
@@ -40,8 +41,12 @@ func main() {
 		}
 	}
 
-	if org == "" || user == "" {
-		log.Fatal("org and user flags are required")
+	if org == "" {
+		log.Fatal("org flag is required")
+	}
+
+	if user == "" && repo == "" {
+		log.Fatal("Either user (-u) or repo (-r) flag is required")
 	}
 
 	ts := oauth2.StaticTokenSource(
@@ -55,13 +60,21 @@ func main() {
 	for {
 
 		// Search for PRs
-		query := fmt.Sprintf("org:%s author:%s is:open is:pr review-requested:%s archived:false", org, author, user)
+		var scopeFilter, filterDesc string
+		if repo != "" {
+			scopeFilter = fmt.Sprintf("repo:%s/%s", org, repo)
+			filterDesc = fmt.Sprintf("repo %s", repo)
+		} else {
+			scopeFilter = fmt.Sprintf("org:%s review-requested:%s", org, user)
+			filterDesc = fmt.Sprintf("user %s", user)
+		}
+		query := fmt.Sprintf("%s author:%s is:open is:pr archived:false", scopeFilter, author)
 		searchResult, _, err := client.Search.Issues(ctx, query, nil)
 		if err != nil {
 			log.Fatalf("Error searching PRs: %v", err)
 		}
 
-		fmt.Printf("Found %d renovate PRs for user %s\n", len(searchResult.Issues), user)
+		fmt.Printf("Found %d renovate PRs for %s\n", len(searchResult.Issues), filterDesc)
 
 		// Filter PRs by dependency if provided
 		var matchingPRs []*github.Issue
