@@ -8,6 +8,7 @@ import (
 	"golang.org/x/oauth2"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -15,7 +16,7 @@ import (
 func main() {
 	ctx := context.Background()
 	var token, tokenVariable, org, user, repo, author, dependency, defaultComment string
-	var yes, debug, retryUntilAllMerged bool
+	var yes, debug, retryUntilAllMerged, group bool
 
 	flag.StringVar(&token, "token", "", "GitHub token to use")
 	flag.StringVar(&tokenVariable, "token-variable", "", "Name of an environment variable to read GitHub token from")
@@ -28,6 +29,7 @@ func main() {
 	flag.BoolVar(&yes, "y", false, "Approve all matching PR-s")
 	flag.BoolVar(&debug, "debug", false, "Enables additional output")
 	flag.BoolVar(&retryUntilAllMerged, "retry-until-all-merged", false, "Retry until all PR-s are merged")
+	flag.BoolVar(&group, "g", false, "Group PRs by dependency and select one to process")
 	flag.Parse()
 
 	if token == "" && tokenVariable == "" {
@@ -69,7 +71,11 @@ func main() {
 			filterDesc = fmt.Sprintf("user %s", user)
 		}
 		query := fmt.Sprintf("%s author:%s is:open is:pr archived:false", scopeFilter, author)
-		searchResult, _, err := client.Search.Issues(ctx, query, nil)
+		var searchOpts *github.SearchOptions
+		if group {
+			searchOpts = &github.SearchOptions{ListOptions: github.ListOptions{PerPage: 100}}
+		}
+		searchResult, _, err := client.Search.Issues(ctx, query, searchOpts)
 		if err != nil {
 			log.Fatalf("Error searching PRs: %v", err)
 		}
@@ -95,9 +101,33 @@ func main() {
 			fmt.Printf("Found %d renovate PRs\n", len(matchingPRs))
 		}
 
+		// Group PRs by dependency and let user select one
+		if group && dependency == "" {
+			grouped := groupPRsByTitle(matchingPRs)
+			if len(grouped) == 0 {
+				fmt.Println("No PRs to group")
+				break
+			}
+
+			titles := sortedKeys(grouped)
+			fmt.Println("\nDependencies:")
+			for i, title := range titles {
+				fmt.Printf("  %d. %s (%d repos)\n", i+1, title, len(grouped[title]))
+			}
+
+			selected := promptForSelection(len(titles))
+			if selected < 0 {
+				fmt.Println("No dependency selected, exiting")
+				break
+			}
+			selectedTitle := titles[selected]
+			matchingPRs = grouped[selectedTitle]
+			fmt.Printf("\nProcessing dependency: %s (%d PRs)\n", selectedTitle, len(matchingPRs))
+		}
+
 		// Process each PR
 		for _, pr := range matchingPRs {
-			fmt.Printf("Processing PR: %s\n", *pr.Title)
+			fmt.Printf("\nProcessing PR: %s\n", *pr.Title)
 			repoUrl := pr.GetHTMLURL()
 			fmt.Printf("Repo URL: %s\n", repoUrl)
 
@@ -151,8 +181,8 @@ func main() {
 				continue
 			}
 
-			// Ask for user approval before proceeding
-			if confirmMerge(*pr.Title) {
+			// Ask for user approval before proceeding unless auto-approve
+			if yes || confirmMerge(*pr.Title) {
 				// Approve the PR
 				review := &github.PullRequestReviewRequest{
 					Body:  github.String("LGTM"),
@@ -250,4 +280,40 @@ func showInformation() {
 	fmt.Println("n - Skip this PR")
 	fmt.Println("c - Approve and merge this PR with custom comment")
 	fmt.Println("? - Show this help")
+}
+
+func groupPRsByTitle(prs []*github.Issue) map[string][]*github.Issue {
+	grouped := make(map[string][]*github.Issue)
+	for _, pr := range prs {
+		if pr.Title != nil {
+			grouped[*pr.Title] = append(grouped[*pr.Title], pr)
+		}
+	}
+	return grouped
+}
+
+func sortedKeys(m map[string][]*github.Issue) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func promptForSelection(max int) int {
+	var input string
+	fmt.Printf("Select dependency [1-%d]: ", max)
+	_, err := fmt.Scanln(&input)
+	if err != nil {
+		log.Printf("Error reading input: %v", err)
+		return -1
+	}
+	var selection int
+	_, err = fmt.Sscanf(input, "%d", &selection)
+	if err != nil || selection < 1 || selection > max {
+		fmt.Println("Invalid selection")
+		return -1
+	}
+	return selection - 1
 }
